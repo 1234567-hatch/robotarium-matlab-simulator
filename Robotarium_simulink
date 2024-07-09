@@ -1,0 +1,109 @@
+% Define constants
+wheel_radius = 0.015; % Radius of the wheel (in meters)
+wheel_base = 0.1; % Distance between the wheels (in meters)
+total_time = 10; % Total simulation time (in seconds)
+omega_r = 10; % Angular velocity of right wheel (rad/s)
+omega_l = 8; % Angular velocity of left wheel (rad/s)
+
+% Initialize Robotarium
+N = 1; % Number of robots
+initial_conditions = [0.1; 0.1; 0]; % Initial position and orientation
+
+% Create the Robotarium object
+rb = Robotarium('NumberOfRobots', N, 'ShowFigure', true);
+
+% Define a single unicycle robot
+si_barrier_cert = create_si_barrier_certificate('SafetyRadius', 0.2);
+single_integrator = create_si_to_uni_mapping2();
+
+% Define the control parameters
+controller = @my_controller;
+
+% Set the time parameters
+time_step = 0.1; % Time step for simulation (in seconds)
+iterations = total_time / time_step;
+
+% Initialize data arrays
+x_trajectory = zeros(iterations, 1);
+y_trajectory = zeros(iterations, 1);
+theta_trajectory = zeros(iterations, 1);
+
+% Start the simulation loop
+for t = 1:iterations
+    % Get robot's current state
+    x_state = rb.get_poses();
+    x = x_state(1, 1);
+    y = x_state(1, 2);
+    theta = x_state(1, 3);
+
+    % Store trajectory
+    x_trajectory(t) = x;
+    y_trajectory(t) = y;
+    theta_trajectory(t) = theta;
+
+    % Implement control laws
+    dxu = controller([x; y; theta], [omega_r; omega_l]);
+
+    % Transform to unicycle dynamics
+    dx = single_integrator(dxu);
+
+    % Ensure safe robot behavior
+    dx = si_barrier_cert(dx, x_state);
+
+    % Set velocities
+    rb.set_velocities(1, dx);
+
+    % Step the simulation
+    rb.step();
+end
+
+% Post-simulation analysis
+% Calculate the total distance traveled
+distance_traveled = sum(sqrt(diff(x_trajectory).^2 + diff(y_trajectory).^2));
+disp(['Total distance traveled: ', num2str(distance_traveled), ' meters']);
+
+% Calculate the average speed
+average_speed = distance_traveled / total_time;
+disp(['Average speed: ', num2str(average_speed), ' meters/second']);
+
+% Plot the trajectory
+figure;
+plot(x_trajectory, y_trajectory, 'b', 'LineWidth', 2);
+xlabel('X position (m)');
+ylabel('Y position (m)');
+title('Robot Trajectory');
+grid on;
+
+% Plot the robot's orientation over time
+figure;
+plot((1:iterations)*time_step, theta_trajectory, 'r', 'LineWidth', 2);
+xlabel('Time (s)');
+ylabel('Orientation (rad)');
+title('Robot Orientation Over Time');
+grid on;
+
+% Plot the linear and angular velocities over time
+linear_velocities = wheel_radius / 2 * (omega_r + omega_l) * ones(iterations, 1);
+angular_velocities = wheel_radius / wheel_base * (omega_r - omega_l) * ones(iterations, 1);
+
+figure;
+subplot(2, 1, 1);
+plot((1:iterations)*time_step, linear_velocities, 'g', 'LineWidth', 2);
+xlabel('Time (s)');
+ylabel('Linear Velocity (m/s)');
+title('Linear Velocity Over Time');
+grid on;
+
+subplot(2, 1, 2);
+plot((1:iterations)*time_step, angular_velocities, 'm', 'LineWidth', 2);
+xlabel('Time (s)');
+ylabel('Angular Velocity (rad/s)');
+title('Angular Velocity Over Time');
+grid on;
+
+% Define your control law function (replace with your own controller logic)
+function dxu = my_controller(state, desired_state)
+    % Example: Simple unicycle controller
+    kp = 1;
+    dxu = kp * (desired_state - state);
+end
